@@ -11,10 +11,11 @@ ASSETS = assets/
 PROJECT_NAME = get_in_the_hole
 OUT_DIR = executables
 LINUX_DIR = $(OUT_DIR)/$(PROJECT_NAME)-linux
-WINDOWS_DIR = $(OUT_DIR)/$(PROJECT_NAME)-windows
 LINUX_ZIP = $(OUT_DIR)/$(PROJECT_NAME)-linux.tar.gz
+WINDOWS_DIR = $(OUT_DIR)/$(PROJECT_NAME)-windows
 WINDOWS_ZIP = $(OUT_DIR)/$(PROJECT_NAME)-windows.zip
 WEB_DIR = $(OUT_DIR)/$(PROJECT_NAME)-web
+WEB_ZIP = $(OUT_DIR)/$(PROJECT_NAME)-web.zip
 
 # Binary names inside folders
 LINUX_BIN = $(LINUX_DIR)/$(PROJECT_NAME).x86_64
@@ -36,7 +37,7 @@ OBJS_WIN = $(SRCS:src/%.c=obj/win/%.o)
 
 CC_WEB = emcc
 CFLAGS_WEB = -std=c11 -Wall -Wextra -Isrc -O2 -sUSE_SDL=3
-LDFLAGS_WEB = -sALLOW_MEMORY_GROWTH -sEXIT_RUNTIME=0 --preload-file $(ASSETS)
+LDFLAGS_WEB = -sALLOW_MEMORY_GROWTH -sEXIT_RUNTIME=0 --preload-file $(ASSETS) --shell-file shell.html
 OBJS_WEB = $(SRCS:src/%.c=obj/web/%.o)
 
 # Simple Development Build
@@ -50,7 +51,7 @@ linux: $(LINUX_ZIP)
 
 windows: $(WINDOWS_ZIP)
 
-web: clean-web $(WEB_DIR)/index.html
+web: $(WEB_ZIP)
 
 all: linux windows
 
@@ -114,6 +115,11 @@ $(WEB_DIR)/index.html: $(OBJS_WEB)
 	$(CC_WEB) $(CFLAGS_WEB) -o $@ $(OBJS_WEB) $(LDFLAGS_WEB)
 	@echo "Web build output in $(WEB_DIR)"
 
+$(WEB_ZIP): $(WEB_DIR)/index.html
+	cp shell.html $(WEB_DIR)/ 2>/dev/null || true
+	cd $(OUT_DIR) && zip -rq $(PROJECT_NAME)-web.zip $(PROJECT_NAME)-web/
+	@echo "Web archive: $(WEB_ZIP)"
+
 obj/web/%.o: src/%.c
 	mkdir -p $(@D)
 	$(CC_WEB) $(CFLAGS_WEB) -c $< -o $@
@@ -140,7 +146,7 @@ clean-windows:
 clean-web:
 	rm -rf $(WEB_DIR) obj/web/
 
-web-run: web
+web-run: $(WEB_ZIP)
 	fuser -k 8000/tcp 2>/dev/null || true
 	@echo "Serving WebAssembly build at http://localhost:8000"
 	@echo "Press Ctrl+C to stop"
@@ -149,7 +155,6 @@ web-run: web
 	sleep 0.2 ; \
 	xdg-open http://localhost:8000 ; \
 	wait $$PID)
-
 	
 clean-dev:
 	rm -rf obj/dev/ $(DEV_BIN)
