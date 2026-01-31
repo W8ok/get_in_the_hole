@@ -72,13 +72,12 @@ void render_ghosts(RenderContext* rc)
       tile_size
     };
 
-    SDL_FPoint ghost_pos = { ghost_rect.x, ghost_rect.y };
-
     _render_fill_rect(rc->renderer, ghost_rect, BLUE);
 
     // Only render arrow if theres a next move
     if (tick < g->move_count)
     {
+      SDL_FPoint ghost_pos = { ghost_rect.x, ghost_rect.y };
       int dx = g->x[tick + 1] - g->x[tick];
       int dy = g->y[tick + 1] - g->y[tick];
       float rotation;
