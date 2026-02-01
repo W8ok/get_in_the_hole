@@ -58,7 +58,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
   if (!SDL_SetAppMetadata("Get In The Hole!!", "v0.1", NULL)) // Not strictly needed but nice to have
     return Panic("Medadata creation failed");
 
-  if (!SDL_CreateWindowAndRenderer("Get In The Hole!!", display_bounds.w, display_bounds.h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN, &app->window, &app->renderer))
+  if (!SDL_CreateWindowAndRenderer("Get In The Hole!!", display_bounds.w, display_bounds.h, SDL_WINDOW_RESIZABLE, &app->window, &app->renderer))
     return Panic("Window/Renderer creation failed");
 
   if (!SDL_SetRenderLogicalPresentation(app->renderer, display_bounds.w, display_bounds.h, SDL_LOGICAL_PRESENTATION_LETTERBOX))
@@ -77,14 +77,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+  AppState *app = (AppState *)appstate;
+  render_cleanup(app->rc);
+  game_cleanup(app->gc);
+
   if (result == SDL_APP_FAILURE)
     printf("Oopsie, i died! :3\n");
   else
     printf("I somehow didn't die! :D\n");
-
-  AppState *app = (AppState *)appstate;
-  render_cleanup(app->rc);
-  game_cleanup(app->gc);
 
   SDL_DestroyRenderer(app->renderer);
   SDL_DestroyWindow(app->window);

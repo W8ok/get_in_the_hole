@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 #include <SDL3/SDL.h>
 
 // Enums
@@ -14,11 +15,16 @@ typedef enum {
   DIR_UP,
   DIR_DOWN,
   DIR_LEFT,
-  DIR_RIGHT
+  DIR_RIGHT,
+  DIR_NONE
 } Direction;
 
 typedef enum {
   ARROW,
+  PLAYER,
+  GHOST,
+  HOLE,
+  TILES,
   TEXTURE_COUNT
 } TextureID;
 
@@ -32,8 +38,12 @@ typedef enum {
   TILE_WALL,
 } TileType;
 
-
 // Common Types
+typedef struct {
+  float render_x;
+  float render_y;
+} RenderPos;
+
 typedef struct {
   uint8_t w, h;
   const uint8_t *tiles;
@@ -52,6 +62,7 @@ typedef struct {
   Direction* move_history;
   int move_tick;
   bool spawned;
+  uint8_t hp;
   Ghost* ghosts;
   int idx;
 
@@ -62,6 +73,9 @@ typedef struct {
   const Map* map;
   bool* player_spawned_here;
   bool* hole_spawned_here;
+
+  // States
+  bool game_over;
 } GameContext;
 
 typedef struct {
@@ -71,7 +85,14 @@ typedef struct {
 
   // Textures
   SDL_Texture* textures[TEXTURE_COUNT];
-  SDL_Texture* maps[MAP_COUNT];
+
+  // Animation
+  int idle_frame;
+  int frame_timer;
+
+  // Interpolation
+  RenderPos player_render;
+  RenderPos* ghost_render;
 } RenderContext;
 
 typedef struct {

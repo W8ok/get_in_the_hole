@@ -98,6 +98,9 @@ void player_move(GameContext* gc, Direction dir)
 
       gc->x++;
       break;
+
+    case DIR_NONE:
+      break;
   }
 }
 
@@ -117,6 +120,8 @@ void random_spawn(GameContext* gc)
 
   // Makes sure the hole doesnt spawn on the player
   // Expanded to also make sure it spawns on an empty tile
+  // also made it not spawn on neither player spawn nor hole spawn locations
+  // To prevent the hole from being hidden under ghosts
   do {
     gc->hole_x = _get_random_int(0, gc->w - 1);
     gc->hole_y = _get_random_int(0, gc->h - 1);
@@ -166,11 +171,19 @@ void ghost_collision(GameContext* gc)
   for (int i = 0; i < gc->idx; i++)
   {
     Ghost* g = &gc->ghosts[i];
-    if (g->in_hole || gc->move_tick > g->move_count)
-      continue;
-
+    
     if (gc->move_tick >= g->move_count+1)
       g->in_hole = true;
+
+    int tick = gc->move_tick;
+    if (tick > g->move_count)
+      tick = g->move_count;
+
+    if (g->x[tick] == gc->x && g->y[tick] == gc->y)
+      gc->hp++;
+
+    if (gc->hp >= 3)
+      gc->game_over = true;
   }
 }
 
@@ -178,19 +191,22 @@ void ghost_collision(GameContext* gc)
 void main_game(GameContext* gc, Direction dir)
 {
   printf("\n");
+
+  if (gc->game_over)
+    return;
   
   if (!_valid_move(gc, dir))
     return;
 
   player_move(gc, dir);
 
-  ghost_collision(gc);
-
   if (_player_on_hole(gc))
     score(gc);
 
   if (!gc->spawned)
     random_spawn(gc);
+
+  ghost_collision(gc);
 }
 
 // Initialization
@@ -236,8 +252,8 @@ void game_cleanup(GameContext* gc)
 {
   printf("game_cleanup\n");
   for (int i = 0; i < gc->idx; i++) {
-    free(gc->ghosts[i].x);  // Free x array
-    free(gc->ghosts[i].y);  // Free y array
+    free(gc->ghosts[i].x);
+    free(gc->ghosts[i].y);
   }
   free(gc->ghosts);
   gc->ghosts = NULL;

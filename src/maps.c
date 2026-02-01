@@ -17,3 +17,4 @@ const Map maps[MAP_COUNT] = {
     .tiles = default_map
   }
 };
+
