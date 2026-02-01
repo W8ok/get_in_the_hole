@@ -27,6 +27,10 @@ bool _valid_move(GameContext* gc, Direction dir)
   if (new_x < 0 || new_x >= gc->w || new_y < 0 || new_y >= gc->h)
     return false;
 
+    // Wall collision
+  else if (map_is_wall(gc->map, new_x, new_y))
+    return false;
+
   else
     return true;
 }
@@ -100,15 +104,28 @@ void player_move(GameContext* gc, Direction dir)
 void random_spawn(GameContext* gc)
 {
   printf("random_spawn\n");
-  gc->x = _get_random_int(0, gc->w - 1);
-  gc->y = _get_random_int(0, gc->h - 1);
+  
+  // Spawn player in an empty tile
+  // and not on a previous player spawn location
+  do {
+    gc->x = _get_random_int(0, gc->w - 1);
+    gc->y = _get_random_int(0, gc->h - 1);
+  } while (!empty_tile(gc, gc->x, gc->y)
+      || gc->player_spawned_here[tile_index(gc, gc->x, gc->y)]);
+
+  gc->player_spawned_here[tile_index(gc, gc->x, gc->y)] = true;
 
   // Makes sure the hole doesnt spawn on the player
+  // Expanded to also make sure it spawns on an empty tile
   do {
     gc->hole_x = _get_random_int(0, gc->w - 1);
     gc->hole_y = _get_random_int(0, gc->h - 1);
-  } while (gc->hole_x == gc->x && gc->hole_y == gc->y);
+  } while (!empty_tile(gc, gc->hole_x, gc->hole_y)
+      || gc->player_spawned_here[tile_index(gc, gc->hole_x, gc->hole_y)]
+      || gc->hole_spawned_here[tile_index(gc, gc->hole_x, gc->hole_y)]
+      || (gc->hole_x == gc->x && gc->hole_y == gc->y));
 
+  gc->hole_spawned_here[tile_index(gc, gc->hole_x, gc->hole_y)] = true;
   gc->spawned = true;
 }
 
@@ -198,6 +215,17 @@ bool game_init(AppState* app)
   app->gc->ghosts[app->gc->idx].y = NULL;
   app->gc->ghosts[app->gc->idx].move_count = 0;
 
+  app->gc->map = &maps[DEFAULT];
+  app->gc->w = app->gc->map->w;
+  app->gc->h = app->gc->map->h;
+
+  int tile_count = app->gc->w * app->gc->h;
+  app->gc->player_spawned_here = calloc(tile_count, sizeof(bool));
+  app->gc->hole_spawned_here = calloc(tile_count, sizeof(bool));
+
+  if (!app->gc->player_spawned_here || !app->gc->hole_spawned_here)
+    return false;
+
   random_spawn(app->gc);
 
   return true;
@@ -213,6 +241,11 @@ void game_cleanup(GameContext* gc)
   }
   free(gc->ghosts);
   gc->ghosts = NULL;
+  
+  free(gc->player_spawned_here);
+  free(gc->hole_spawned_here);
+  gc->player_spawned_here = NULL;
+  gc->hole_spawned_here = NULL;
 
   free(gc);
   gc = NULL;

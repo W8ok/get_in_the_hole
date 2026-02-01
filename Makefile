@@ -2,7 +2,8 @@
 SRCS = src/main.c \
 			 src/utils.c \
 			 src/game.c \
-			 src/render.c
+			 src/render.c \
+			 src/maps.c
 
 # Assets
 ASSETS = assets/

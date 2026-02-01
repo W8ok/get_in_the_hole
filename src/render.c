@@ -88,7 +88,7 @@ void render_ghosts(RenderContext* rc)
         rotation = 270; // left
       else if (dy == 1)
         rotation = 180; // down
-      else if (dy == -1)
+      else
         rotation = 0;   // up
 
       _render_sprite(rc->renderer, rc->textures[ARROW], ghost_pos, rotation, 2);
@@ -135,11 +135,39 @@ void render_grid(const RenderContext* rc)
   }
 }
 
+void render_map(RenderContext* rc)
+{
+  const Map* map = rc->gc->map;
+  float tile = rc->gc->tile_size;
+
+  for (int y = 0; y < map->h; y++)
+  {
+    for (int x = 0; x < map->w; x++)
+    {
+      uint8_t t = map_tile_at(map, x, y);
+
+      if (t == TILE_WALL)
+      {
+        SDL_FRect wall = {
+          x * tile,
+          y * tile,
+          tile,
+          tile
+        };
+
+        _render_fill_rect(rc->renderer, wall, BLACK);
+      }
+    }
+  }
+}
+
+
 // Main Function
 void main_render(RenderContext* rc)
 {
   _clear_background(rc->renderer, GRAY);
 
+  render_map(rc);
   render_hole(rc);
   render_player(rc);
   render_ghosts(rc);
@@ -162,12 +190,12 @@ bool render_init(AppState* app)
 
   // Texture loading
   const char* texture_paths[TEXTURE_COUNT] = {
-    "assets/arrow.png",
+    "assets/arrow.bmp",
   };
 
   for (int i = 0; i < TEXTURE_COUNT; i++)
   {
-    SDL_Surface* surf = SDL_LoadPNG(texture_paths[i]);
+    SDL_Surface* surf = SDL_LoadBMP(texture_paths[i]);
     if (!surf) return Panic("Failed to load texture");
 
     app->rc->textures[i] = SDL_CreateTextureFromSurface(app->rc->renderer, surf);

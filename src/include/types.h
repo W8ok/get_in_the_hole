@@ -22,7 +22,23 @@ typedef enum {
   TEXTURE_COUNT
 } TextureID;
 
+typedef enum {
+  DEFAULT,  // 5x5
+  MAP_COUNT
+} MapID;
+
+typedef enum {
+  TILE_EMPTY,
+  TILE_WALL,
+} TileType;
+
+
 // Common Types
+typedef struct {
+  uint8_t w, h;
+  const uint8_t *tiles;
+} Map;
+
 typedef struct {
   uint8_t *x, *y; // Both are arrays
   int move_count;
@@ -43,6 +59,9 @@ typedef struct {
   int tile_size;
   int w, h;
   int hole_x, hole_y;
+  const Map* map;
+  bool* player_spawned_here;
+  bool* hole_spawned_here;
 } GameContext;
 
 typedef struct {
@@ -52,6 +71,7 @@ typedef struct {
 
   // Textures
   SDL_Texture* textures[TEXTURE_COUNT];
+  SDL_Texture* maps[MAP_COUNT];
 } RenderContext;
 
 typedef struct {
