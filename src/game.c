@@ -12,6 +12,7 @@ int _get_random_int(int min, int max)
 
 bool _valid_move(GameContext* gc, Direction dir)
 {
+  printf("_valid_move\n");
   int new_x = gc->x;
   int new_y = gc->y;
 
@@ -24,11 +25,11 @@ bool _valid_move(GameContext* gc, Direction dir)
     default: return false;
   }
 
-    // Check map bounds
+  // Check map bounds
   if (new_x < 0 || new_x >= gc->w || new_y < 0 || new_y >= gc->h)
     return false;
 
-// Wall collision
+  // Wall collision
   else if (map_is_wall(gc->map, new_x, new_y))
     return false;
 
@@ -39,11 +40,23 @@ bool _valid_move(GameContext* gc, Direction dir)
 bool _player_on_hole(GameContext* gc)
 {
   printf("_player_on_hole\n");
-  if (gc->x == gc->hole_x && gc->y == gc->hole_y)
-    return true;
+  return gc->x == gc->hole_x && gc->y == gc->hole_y;
+}
 
-  else
-    return false;
+static float _get_tile_size(const GameContext* gc)
+{
+  printf("_get_tile_size\n");
+  const float max_width  = 800;
+  const float max_height = 600;
+  const float margin = 32;
+
+  float tile_w = (max_width  - margin * 2) / gc->w;
+  float tile_h = (max_height - margin * 2) / gc->h;
+
+  // choose the smaller one to make sure it fits
+  float tile_size = (tile_w < tile_h) ? tile_w : tile_h;
+
+  return tile_size;
 }
 
 // Primary Functions
@@ -73,30 +86,22 @@ void player_move(GameContext* gc, Direction dir)
   switch (dir)
   {
     case DIR_UP: 
-      if (gc->y == 0)
-        break;
-
+      if (gc->y == 0) break;
       gc->y--;
       break;
 
     case DIR_DOWN:
-      if (gc->y == gc->h - 1)
-        break;
-
+      if (gc->y == gc->h - 1) break;
       gc->y++;
       break;
 
     case DIR_LEFT:
-      if (gc->x == 0)
-        break;
-
+      if (gc->x == 0) break;
       gc->x--;
       break;
 
     case DIR_RIGHT:
-      if (gc->x == gc->w - 1)
-        break;
-
+      if (gc->x == gc->w - 1) break;
       gc->x++;
       break;
 
@@ -120,9 +125,6 @@ void random_spawn(GameContext* gc)
   gc->player_spawned_here[tile_index(gc, gc->x, gc->y)] = true;
 
   // Makes sure the hole doesnt spawn on the player
-  // Expanded to also make sure it spawns on an empty tile
-  // also made it not spawn on neither player spawn nor hole spawn locations
-  // To prevent the hole from being hidden under ghosts
   do {
     gc->hole_x = _get_random_int(0, gc->w - 1);
     gc->hole_y = _get_random_int(0, gc->h - 1);
@@ -137,7 +139,7 @@ void random_spawn(GameContext* gc)
 
 void score(GameContext* gc)
 {
-  printf("score\n\n"); // 2 extra lines when scoring
+  printf("score\n\n");
   Ghost* g = &gc->ghosts[gc->idx];
 
   uint8_t *new_x = realloc(g->x, (gc->move_tick + 1) * sizeof(uint8_t));
@@ -194,26 +196,19 @@ void level_cleared(GameContext* gc)
   switch (gc->current_map)
   {
     case TUTORIAL:
-      if (gc->idx < 3)
-        return;
+      if (gc->idx < 3) return;
       break;
 
     case DEFAULT:
-      if (gc->idx < 5)
-        return;
+      if (gc->idx < 5) return;
       break;
 
     case CIRCLING:
-      if (gc->idx < 12)
-        return;
+      if (gc->idx < 12) return;
       break;
     default: return;
   }
 
-  // HORRIBLE CODE... TRULY A CRIME AGAISNT HUMANITY
-  // i know... i just dont care :3
-  // at this point doing arenas is 200 times safer and easier...
-  // but im too stubborn to do anything about it
   for (int i = 0; i < gc->idx; i++) {
     free(gc->ghosts[i].x);
     free(gc->ghosts[i].y);
@@ -234,6 +229,7 @@ void level_cleared(GameContext* gc)
   gc->map = &maps[gc->current_map];
   gc->w = gc->map->w;
   gc->h = gc->map->h;
+  gc->tile_size = _get_tile_size(gc);
 
   int tile_count = gc->w * gc->h;
   gc->player_spawned_here = calloc(tile_count, sizeof(bool));
@@ -241,11 +237,9 @@ void level_cleared(GameContext* gc)
   gc->ghosts = calloc(MAX_GHOSTS, sizeof(Ghost));
 }
 
-// Main Function
 void main_game(GameContext* gc, Direction dir)
 {
-  printf("\n");
-
+  printf("main_game\n");
   if (gc->game_over)
     return;
   
@@ -276,7 +270,7 @@ bool game_init(AppState* app)
 
   srand(time(NULL));
 
-  app->gc->tile_size = 32;
+  app->gc->tile_size = 64;
 
   app->gc->ghosts = calloc(MAX_GHOSTS, sizeof(Ghost));
   if (!app->gc->ghosts)
