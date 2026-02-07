@@ -50,18 +50,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
   if(!SDL_Init(SDL_INIT_VIDEO))
     return Panic("SDL_Init failed");
 
-  // Get screen size
-  SDL_DisplayID display = SDL_GetPrimaryDisplay();
-  SDL_Rect display_bounds;
-  SDL_GetDisplayBounds(display, &display_bounds);
-
   if (!SDL_SetAppMetadata("Get In The Hole!!", "v0.1", NULL)) // Not strictly needed but nice to have
     return Panic("Medadata creation failed");
 
-  if (!SDL_CreateWindowAndRenderer("Get In The Hole!!", display_bounds.w, display_bounds.h, SDL_WINDOW_RESIZABLE, &app->window, &app->renderer))
+  // Create window and renderer at 800x600
+  if (!SDL_CreateWindowAndRenderer("Get In The Hole!!", 800, 600, SDL_WINDOW_RESIZABLE, &app->window, &app->renderer))
     return Panic("Window/Renderer creation failed");
 
-  if (!SDL_SetRenderLogicalPresentation(app->renderer, display_bounds.w, display_bounds.h, SDL_LOGICAL_PRESENTATION_LETTERBOX))
+  if (!SDL_SetRenderLogicalPresentation(app->renderer, 800, 600, SDL_LOGICAL_PRESENTATION_LETTERBOX))
     return Panic("Logical Presentation creation failed");
 
   // My own stuff (mmmm pointers :3c)
@@ -70,7 +66,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 
   if (!render_init(app))
     return Panic("render_init failed");
-
 
   return SDL_APP_CONTINUE;
 }

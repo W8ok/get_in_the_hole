@@ -1,3 +1,4 @@
+// render.c
 #include "include/types.h"
 #include "include/defines.h"
 #include "include/inlines.h"
@@ -50,8 +51,8 @@ static float _approach(float current, float target, float delta_time)
 
 static SDL_FPoint _get_map_offset(const GameContext* gc)
 {
-    float screen_w = 1920;
-    float screen_h = 1080;
+    float screen_w = 800;
+    float screen_h = 600;
 
     float map_pixel_w = gc->w * gc->tile_size;
     float map_pixel_h = gc->h * gc->tile_size;

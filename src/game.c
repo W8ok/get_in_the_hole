@@ -276,7 +276,7 @@ bool game_init(AppState* app)
 
   srand(time(NULL));
 
-  app->gc->tile_size = 64;
+  app->gc->tile_size = 32;
 
   app->gc->ghosts = calloc(MAX_GHOSTS, sizeof(Ghost));
   if (!app->gc->ghosts)
