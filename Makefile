@@ -22,14 +22,14 @@ WEB_ZIP = $(OUT_DIR)/$(PROJECT_NAME)-web.zip
 LINUX_BIN = $(LINUX_DIR)/$(PROJECT_NAME).x86_64
 WINDOWS_BIN = $(WINDOWS_DIR)/$(PROJECT_NAME).exe
 
-# Linux Config - SDL3 + OpenGL
+# Linux Config
 CC_LINUX = gcc
 CFLAGS_LINUX = -std=c11 -Wall -Wextra -Isrc -O2
 #LDFLAGS_LINUX = -lraylib -lm -lpthread -ldl -s
 LDFLAGS_LINUX = -lSDL3 -lGL -lm -lpthread -ldl -s
 OBJS_LINUX = $(SRCS:src/%.c=obj/linux/%.o)
 
-# Windows Config - SDL3 + OpenGL
+# Windows Config
 CC_WIN = x86_64-w64-mingw32-gcc
 CFLAGS_WIN = -std=c11 -Wall -Wextra -Isrc -Iwinlibs/include
 #LDFLAGS_WIN = -Lwinlibs/lib -lraylib -lm -lpthread -lwinmm -lgdi32

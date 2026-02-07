@@ -29,7 +29,9 @@ typedef enum {
 } TextureID;
 
 typedef enum {
+  TUTORIAL, // 3x3
   DEFAULT,  // 5x5
+  CIRCLING, // 7x7
   MAP_COUNT
 } MapID;
 
@@ -45,7 +47,7 @@ typedef struct {
 } RenderPos;
 
 typedef struct {
-  uint8_t w, h;
+  uint8_t x, y, w, h;
   const uint8_t *tiles;
 } Map;
 
@@ -71,6 +73,7 @@ typedef struct {
   int w, h;
   int hole_x, hole_y;
   const Map* map;
+  MapID current_map;
   bool* player_spawned_here;
   bool* hole_spawned_here;
 

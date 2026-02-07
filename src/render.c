@@ -1,6 +1,6 @@
-// render.c
 #include "include/types.h"
 #include "include/defines.h"
+#include "include/inlines.h"
 
 // Helper Fucntions
 void _clear_background(SDL_Renderer* renderer, SDL_Color color)
@@ -48,10 +48,28 @@ static float _approach(float current, float target, float delta_time)
   return current + (delta > 0 ? step : -step);
 }
 
+static SDL_FPoint _get_map_offset(const GameContext* gc)
+{
+    float screen_w = 1920;
+    float screen_h = 1080;
+
+    float map_pixel_w = gc->w * gc->tile_size;
+    float map_pixel_h = gc->h * gc->tile_size;
+
+    SDL_FPoint offset = {
+        .x = (screen_w - map_pixel_w) / 2,
+        .y = (screen_h - map_pixel_h) / 2
+    };
+
+    return offset;
+}
+
 // Primary Functions
 void render_player(RenderContext* rc, float delta_time)
 {
   float tile_size = rc->gc->tile_size;
+
+  SDL_FPoint offset = _get_map_offset(rc->gc);
 
   // Use interpolated render positions
   rc->player_render.render_x = _approach(rc->player_render.render_x, rc->gc->x, delta_time);
@@ -86,8 +104,8 @@ void render_player(RenderContext* rc, float delta_time)
   };
 
   SDL_FRect player = {
-    .x = rc->player_render.render_x * tile_size,
-    .y = rc->player_render.render_y * tile_size,
+    .x = rc->player_render.render_x * tile_size + offset.x,
+    .y = rc->player_render.render_y * tile_size + offset.y,
     .w = tile_size,
     .h = tile_size
   };
@@ -101,6 +119,7 @@ void render_ghosts(RenderContext* rc, float delta_time)
     return;
 
   float tile_size = rc->gc->tile_size;
+  SDL_FPoint offset = _get_map_offset(rc->gc);
 
   for (int i = 0; i < rc->gc->idx; i++)
   {
@@ -144,8 +163,8 @@ void render_ghosts(RenderContext* rc, float delta_time)
     };
 
     SDL_FRect ghost_rect = (SDL_FRect) {
-      rpos->render_x * tile_size,
-      rpos->render_y * tile_size,
+      rpos->render_x * tile_size + offset.x,
+      rpos->render_y * tile_size + offset.y,
       tile_size,
       tile_size
     };
@@ -157,10 +176,11 @@ void render_ghosts(RenderContext* rc, float delta_time)
 void render_hole(RenderContext* rc)
 {
   float tile_size = rc->gc->tile_size;
+  SDL_FPoint offset = _get_map_offset(rc->gc);
 
   SDL_FRect hole = (SDL_FRect) {
-    rc->gc->hole_x * tile_size,
-    rc->gc->hole_y * tile_size,
+    rc->gc->hole_x * tile_size + offset.x,
+    rc->gc->hole_y * tile_size + offset.y,
     tile_size,
     tile_size
   };
@@ -183,7 +203,7 @@ void render_grid(const RenderContext* rc)
 
   for (int x = 0; x <= w; x++) {
     float px = x * tile_size;
-    SDL_RenderLine(rc->renderer, px, 0, px, ph);  // Single line
+    SDL_RenderLine(rc->renderer, px, 0, px, ph);
   }
 
   for (int y = 0; y <= h; y++) {
@@ -196,6 +216,7 @@ void render_map(RenderContext* rc)
 {
   const Map* map = rc->gc->map;
   float tile = rc->gc->tile_size;
+  SDL_FPoint offset = _get_map_offset(rc->gc);
 
   for (int y = 0; y < map->h; y++)
   {
@@ -206,8 +227,8 @@ void render_map(RenderContext* rc)
       if (t == TILE_WALL)
       {
         SDL_FRect wall = {
-          x * tile,
-          y * tile,
+          x * tile + offset.x,
+          y * tile + offset.y,
           tile,
           tile
         };

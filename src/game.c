@@ -1,6 +1,7 @@
 // game.c
 #include "include/types.h"
 #include "include/defines.h"
+#include "include/inlines.h"
 
 // Helper Functions
 int _get_random_int(int min, int max)
@@ -27,7 +28,7 @@ bool _valid_move(GameContext* gc, Direction dir)
   if (new_x < 0 || new_x >= gc->w || new_y < 0 || new_y >= gc->h)
     return false;
 
-    // Wall collision
+// Wall collision
   else if (map_is_wall(gc->map, new_x, new_y))
     return false;
 
@@ -187,6 +188,59 @@ void ghost_collision(GameContext* gc)
   }
 }
 
+void level_cleared(GameContext* gc)
+{
+  printf("level_cleared\n");
+  switch (gc->current_map)
+  {
+    case TUTORIAL:
+      if (gc->idx < 3)
+        return;
+      break;
+
+    case DEFAULT:
+      if (gc->idx < 5)
+        return;
+      break;
+
+    case CIRCLING:
+      if (gc->idx < 12)
+        return;
+      break;
+    default: return;
+  }
+
+  // HORRIBLE CODE... TRULY A CRIME AGAISNT HUMANITY
+  // i know... i just dont care :3
+  // at this point doing arenas is 200 times safer and easier...
+  // but im too stubborn to do anything about it
+  for (int i = 0; i < gc->idx; i++) {
+    free(gc->ghosts[i].x);
+    free(gc->ghosts[i].y);
+  }
+
+  free(gc->ghosts);
+  free(gc->player_spawned_here);
+  free(gc->hole_spawned_here);
+
+  gc->hp = 0;
+  gc->idx = 0;
+
+  gc->current_map++;
+
+  if (gc->current_map == MAP_COUNT)
+    gc->current_map = 0;
+
+  gc->map = &maps[gc->current_map];
+  gc->w = gc->map->w;
+  gc->h = gc->map->h;
+
+  int tile_count = gc->w * gc->h;
+  gc->player_spawned_here = calloc(tile_count, sizeof(bool));
+  gc->hole_spawned_here = calloc(tile_count, sizeof(bool));
+  gc->ghosts = calloc(MAX_GHOSTS, sizeof(Ghost));
+}
+
 // Main Function
 void main_game(GameContext* gc, Direction dir)
 {
@@ -201,7 +255,10 @@ void main_game(GameContext* gc, Direction dir)
   player_move(gc, dir);
 
   if (_player_on_hole(gc))
+  {
     score(gc);
+    level_cleared(gc);
+  }
 
   if (!gc->spawned)
     random_spawn(gc);
@@ -220,8 +277,6 @@ bool game_init(AppState* app)
   srand(time(NULL));
 
   app->gc->tile_size = 64;
-  app->gc->w = 10;
-  app->gc->h = 10;
 
   app->gc->ghosts = calloc(MAX_GHOSTS, sizeof(Ghost));
   if (!app->gc->ghosts)
@@ -231,7 +286,8 @@ bool game_init(AppState* app)
   app->gc->ghosts[app->gc->idx].y = NULL;
   app->gc->ghosts[app->gc->idx].move_count = 0;
 
-  app->gc->map = &maps[DEFAULT];
+  app->gc->map = &maps[TUTORIAL];
+  app->gc->current_map = TUTORIAL;
   app->gc->w = app->gc->map->w;
   app->gc->h = app->gc->map->h;
 
