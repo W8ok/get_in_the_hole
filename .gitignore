@@ -1,6 +1,5 @@
 executables/
 obj/
-get_in_the_hole
+get-in-the-hole
 .clangd
-Legacy
 winlibs/
