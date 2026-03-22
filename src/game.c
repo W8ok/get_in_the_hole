@@ -1,319 +1,324 @@
 // game.c
-#include "include/types.h"
-#include "include/defines.h"
-#include "include/inlines.h"
+#include "game.h"
 
-// Helper Functions
-int _get_random_int(int min, int max)
+static inline i32 _get_random_int(i32 min, i32 max)
 {
-  printf("_get_random_int\n");
-  return min + rand() % (max - min + 1);  
+	if (min >= max)
+		ERROR_RETURN("Invalid input");
+
+	i32 result = min + SDL_rand(max - min + 1);
+	return result;
 }
 
-bool _valid_move(GameContext* gc, Direction dir)
+static inline bool _player_move(GameContext* gc)
 {
-  printf("_valid_move\n");
-  int new_x = gc->x;
-  int new_y = gc->y;
+	u8_2 new_pos = gc->player.current_pos;
 
-  switch (dir)
-  {
-    case DIR_UP:    new_y--; break;
-    case DIR_DOWN:  new_y++; break;
-    case DIR_LEFT:  new_x--; break;
-    case DIR_RIGHT: new_x++; break;
-    default: return false;
-  }
+	switch (input.dir)
+	{
+		case DIR_NONE:	return false;
+		case DIR_UP:	new_pos.y--;	break;
+		case DIR_DOWN:	new_pos.y++;	break;
+		case DIR_LEFT:	new_pos.x--;	break;
+		case DIR_RIGHT:	new_pos.x++;	break;
+	}
 
-  // Check map bounds
-  if (new_x < 0 || new_x >= gc->w || new_y < 0 || new_y >= gc->h)
-    return false;
+	// Check World Bounds
+	// Relying on integer overflow
+	if (new_pos.x >= gc->wc->maps[gc->wc->current_map].size.x
+			|| new_pos.y >= gc->wc->maps[gc->wc->current_map].size.y)
+		return false;
 
-  // Wall collision
-  else if (map_is_wall(gc->map, new_x, new_y))
-    return false;
+	// Check if tile is walkable
+	const Map* map = &gc->wc->maps[gc->wc->current_map];
+	u8 tile_type = TILE(map, new_pos.y, new_pos.x);
+	if (tile_type != 0)  // Wall or other non-walkable tile
+		return false;
 
-  else
-    return true;
+	DA_APPEND(gc->player.pos_list, new_pos);
+	gc->player.current_pos = new_pos;
+	LOG_INFO("Player position: (%d, %d)", gc->player.current_pos.x, gc->player.current_pos.y);
+
+	return true;
 }
 
-bool _player_on_hole(GameContext* gc)
+static inline void _ghost_move(GameContext* gc)
 {
-  printf("_player_on_hole\n");
-  return gc->x == gc->hole_x && gc->y == gc->hole_y;
+	u16 current_move = gc->player.pos_list.count;
+	for (u16 i = 0; i < gc->ghost.count; i++)
+	{
+		if (current_move > gc->ghost.data[i].move_cap)
+			continue;
+
+		if (!gc->ghost.data[i].active)
+			continue;
+
+		gc->ghost.data[i].current_pos = gc->ghost.data[i].pos_list.data[current_move-1];
+
+		LOG_INFO("Ghost%d position: (%d, %d)", i, gc->ghost.data[i].current_pos.x, gc->ghost.data[i].current_pos.y);
+	}
 }
 
-static float _get_tile_size(const GameContext* gc)
+static inline bool _spawn_ghost(GameContext* gc)
 {
-  printf("_get_tile_size\n");
-  const float max_width  = 800;
-  const float max_height = 600;
-  const float margin = 32;
+	Ghost new_ghost = (Ghost){
+		.pos_list = { 0 },
+		.current_pos = gc->player.spawn_pos,
+		.move_cap = gc->player.pos_list.count,
+		.active = true,
+	};
+	DA_APPEND(gc->ghost, new_ghost);
 
-  float tile_w = (max_width  - margin * 2) / gc->w;
-  float tile_h = (max_height - margin * 2) / gc->h;
+	// memcpy is way faster
+	size_t ghost_idx = gc->ghost.count - 1;
+	LOG_DEBUG("Spawning ghost %zu, copying %d positions", ghost_idx, gc->player.pos_list.count + 1);
+	for (u16 i = 0; i < gc->player.pos_list.count; i++)
+	{
+		DA_APPEND(gc->ghost.data[ghost_idx].pos_list, gc->player.pos_list.data[i]);
+		LOG_DEBUG("player[%d] = (%d, %d)", i, gc->player.pos_list.data[i].x, gc->player.pos_list.data[i].y);
+	}
 
-  // choose the smaller one to make sure it fits
-  float tile_size = (tile_w < tile_h) ? tile_w : tile_h;
+	gc->ghosts_spawned = true;
+	LOG_INFO("Ghost%zu spawn position: (%d, %d)", ghost_idx, gc->ghost.data[ghost_idx].current_pos.x, gc->ghost.data[ghost_idx].current_pos.y);
 
-  return tile_size;
+	return true;
 }
 
-// Primary Functions
-void player_move(GameContext* gc, Direction dir)
+static u8_2 find_valid_spawn_tile(GameContext* gc)
 {
-  printf("player_move\n");
-  Ghost* g = &gc->ghosts[gc->idx];
-
-  uint8_t *new_x = realloc(g->x, (gc->move_tick + 1) * sizeof(uint8_t));
-  uint8_t *new_y = realloc(g->y, (gc->move_tick + 1) * sizeof(uint8_t));
-
-  if (!new_x || !new_y)
-  {
-    free(new_x);
-    free(new_y);
-    return;
-  }
-    
-  g->x = new_x;
-  g->y = new_y;
-
-  g->x[gc->move_tick] = gc->x;
-  g->y[gc->move_tick] = gc->y;
-
-  gc->move_tick++;
-
-  switch (dir)
-  {
-    case DIR_UP: 
-      if (gc->y == 0) break;
-      gc->y--;
-      break;
-
-    case DIR_DOWN:
-      if (gc->y == gc->h - 1) break;
-      gc->y++;
-      break;
-
-    case DIR_LEFT:
-      if (gc->x == 0) break;
-      gc->x--;
-      break;
-
-    case DIR_RIGHT:
-      if (gc->x == gc->w - 1) break;
-      gc->x++;
-      break;
-
-    case DIR_NONE:
-      break;
-  }
+	u32 start_time = (u32)SDL_GetTicksNS();
+	for (u16 i = gc->spawn_tiles.last_occupied; i < gc->spawn_tiles.count; i++) {
+		u8_2 tile = gc->spawn_tiles.data[i].tile;
+		if (!gc->spawn_tiles.data[i].occupied)
+		{
+			gc->spawn_tiles.last_occupied = i;
+			gc->spawn_tiles.data[i].occupied = true;
+			u32 end_time = (u32)SDL_GetTicksNS();
+			LOG_DEBUG("Found spawn tile (%d, %d) after %d ns (checked %d tiles)", tile.x, tile.y, end_time - start_time, i - gc->spawn_tiles.last_occupied + 1);
+			return tile;
+		}
+	}
+	ERROR_EXIT("No available spawn positions");
 }
 
-void random_spawn(GameContext* gc)
+static inline bool _spawn_player(GameContext* gc)
 {
-  printf("random_spawn\n");
-  
-  // Spawn player in an empty tile
-  // and not on a previous player spawn location
-  do {
-    gc->x = _get_random_int(0, gc->w - 1);
-    gc->y = _get_random_int(0, gc->h - 1);
-  } while (!empty_tile(gc, gc->x, gc->y)
-      || gc->player_spawned_here[tile_index(gc, gc->x, gc->y)]);
+	gc->player.current_pos = find_valid_spawn_tile(gc);
+	gc->player_spawned = true;
+	gc->player.spawn_pos = gc->player.current_pos;
+	gc->player.pos_list.count = 0;
 
-  gc->player_spawned_here[tile_index(gc, gc->x, gc->y)] = true;
+	DA_APPEND(gc->player.pos_list, gc->player.spawn_pos);
+	LOG_INFO("Player spawn position: (%d, %d)", gc->player.spawn_pos.x, gc->player.spawn_pos.y);
 
-  // Makes sure the hole doesnt spawn on the player
-  do {
-    gc->hole_x = _get_random_int(0, gc->w - 1);
-    gc->hole_y = _get_random_int(0, gc->h - 1);
-  } while (!empty_tile(gc, gc->hole_x, gc->hole_y)
-      || gc->player_spawned_here[tile_index(gc, gc->hole_x, gc->hole_y)]
-      || gc->hole_spawned_here[tile_index(gc, gc->hole_x, gc->hole_y)]
-      || (gc->hole_x == gc->x && gc->hole_y == gc->y));
-
-  gc->hole_spawned_here[tile_index(gc, gc->hole_x, gc->hole_y)] = true;
-  gc->spawned = true;
+	return true;
 }
 
-void score(GameContext* gc)
+static inline bool _spawn_hole(GameContext* gc)
 {
-  printf("score\n\n");
-  Ghost* g = &gc->ghosts[gc->idx];
+	gc->hole_pos = find_valid_spawn_tile(gc);
+	gc->hole_spawned = true;
 
-  uint8_t *new_x = realloc(g->x, (gc->move_tick + 1) * sizeof(uint8_t));
-  uint8_t *new_y = realloc(g->y, (gc->move_tick + 1) * sizeof(uint8_t));
-
-  if (!new_x || !new_y)
-  {
-    free(new_x);
-    free(new_y);
-    return;
-  }
-    
-  g->x = new_x;
-  g->y = new_y;
-
-  g->x[gc->move_tick] = gc->x;
-  g->y[gc->move_tick] = gc->y;
-
-  g->move_count = gc->move_tick;
-
-  gc->move_tick = 0;
-  gc->idx++;
-  gc->spawned = false;
-
-  for (int i = 0; i < gc->idx; i++)
-    gc->ghosts[i].in_hole = false;
+	LOG_INFO("Hole spawn position: (%d, %d)", gc->hole_pos.x, gc->hole_pos.y);
+	return true;
 }
 
-void ghost_collision(GameContext* gc)
+static inline bool _is_player_on_hole(GameContext* gc)
 {
-  printf("ghost_collision\n");
-  for (int i = 0; i < gc->idx; i++)
-  {
-    Ghost* g = &gc->ghosts[i];
-    
-    if (gc->move_tick >= g->move_count+1)
-      g->in_hole = true;
-
-    int tick = gc->move_tick;
-    if (tick > g->move_count)
-      tick = g->move_count;
-
-    if (g->x[tick] == gc->x && g->y[tick] == gc->y)
-      gc->hp++;
-
-    if (gc->hp >= 3)
-      gc->game_over = true;
-  }
+	return gc->player.current_pos.x == gc->hole_pos.x
+		&& gc->player.current_pos.y == gc->hole_pos.y;
 }
 
-void level_cleared(GameContext* gc)
+static inline bool _ghost_collision(GameContext* gc)
 {
-  printf("level_cleared\n");
-  switch (gc->current_map)
-  {
-    case TUTORIAL:
-      if (gc->idx < 3) return;
-      break;
-
-    case DEFAULT:
-      if (gc->idx < 5) return;
-      break;
-
-    case CIRCLING:
-      if (gc->idx < 12) return;
-      break;
-    default: return;
-  }
-
-  for (int i = 0; i < gc->idx; i++) {
-    free(gc->ghosts[i].x);
-    free(gc->ghosts[i].y);
-  }
-
-  free(gc->ghosts);
-  free(gc->player_spawned_here);
-  free(gc->hole_spawned_here);
-
-  gc->hp = 0;
-  gc->idx = 0;
-
-  gc->current_map++;
-
-  if (gc->current_map == MAP_COUNT)
-    gc->current_map = 0;
-
-  gc->map = &maps[gc->current_map];
-  gc->w = gc->map->w;
-  gc->h = gc->map->h;
-  gc->tile_size = _get_tile_size(gc);
-
-  int tile_count = gc->w * gc->h;
-  gc->player_spawned_here = calloc(tile_count, sizeof(bool));
-  gc->hole_spawned_here = calloc(tile_count, sizeof(bool));
-  gc->ghosts = calloc(MAX_GHOSTS, sizeof(Ghost));
+	// Could add an invincibility frame... just saying
+	for (u16 i = 0; i < gc->ghost.count; i++)
+	{
+		if (gc->ghost.data[i].current_pos.x == gc->player.current_pos.x
+				&&	gc->ghost.data[i].current_pos.y == gc->player.current_pos.y)
+		{
+			LOG_INFO("Hit at (%d, %d)", gc->player.current_pos.x, gc->player.current_pos.y);
+			return true;
+		}
+	}
+	return false;
 }
 
-void main_game(GameContext* gc, Direction dir)
+static inline bool _score(GameContext* gc)
 {
-  printf("main_game\n");
-  if (gc->game_over)
-    return;
-  
-  if (!_valid_move(gc, dir))
-    return;
+	gc->score++;
+	gc->hole_spawned = false;
+	gc->player_spawned = false;
+	gc->ghosts_spawned = false;
 
-  player_move(gc, dir);
+	// Reset ghosts
+	for (u16 i = 0; i < gc->ghost.count; i++)
+	{
+		gc->ghost.data[i].current_pos = gc->ghost.data[i].pos_list.data[0];
+		gc->ghost.data[i].active = true;
+	}
 
-  if (_player_on_hole(gc))
-  {
-    score(gc);
-    level_cleared(gc);
-  }
 
-  if (!gc->spawned)
-    random_spawn(gc);
-
-  ghost_collision(gc);
+	return true;
 }
 
-// Initialization
-bool game_init(AppState* app)
+static inline void _shuffle_tiles(GameContext* gc)
 {
-  printf("game_init\n");
-  app->gc = calloc(1, sizeof(GameContext));
-  if (!app->gc)
-    return false;
+	// Thank god for the internet
+	for (u16 i = gc->spawn_tiles.count-1; i > 0; i--)
+	{
+		u16 j = _get_random_int(0, i);
+		SpawnableTile temp = gc->spawn_tiles.data[i];
+		gc->spawn_tiles.data[i] =  gc->spawn_tiles.data[j];
+		gc->spawn_tiles.data[j] = temp;
+	}
 
-  srand(time(NULL));
-
-  app->gc->tile_size = 64;
-
-  app->gc->ghosts = calloc(MAX_GHOSTS, sizeof(Ghost));
-  if (!app->gc->ghosts)
-    return false;
-  
-  app->gc->ghosts[app->gc->idx].x = NULL;
-  app->gc->ghosts[app->gc->idx].y = NULL;
-  app->gc->ghosts[app->gc->idx].move_count = 0;
-
-  app->gc->map = &maps[TUTORIAL];
-  app->gc->current_map = TUTORIAL;
-  app->gc->w = app->gc->map->w;
-  app->gc->h = app->gc->map->h;
-
-  int tile_count = app->gc->w * app->gc->h;
-  app->gc->player_spawned_here = calloc(tile_count, sizeof(bool));
-  app->gc->hole_spawned_here = calloc(tile_count, sizeof(bool));
-
-  if (!app->gc->player_spawned_here || !app->gc->hole_spawned_here)
-    return false;
-
-  random_spawn(app->gc);
-
-  return true;
+	for (u16 i = 0; i < gc->spawn_tiles.count; i++)
+    LOG_DEBUG("free_tiles[%d] = (%d, %d) occupied=%d", i, gc->spawn_tiles.data[i].tile.x, gc->spawn_tiles.data[i].tile.y, gc->spawn_tiles.data[i].occupied);
 }
 
-// Cleanup Function
-void game_cleanup(GameContext* gc)
+static inline bool _generate_world(GameContext* gc)
 {
-  printf("game_cleanup\n");
-  for (int i = 0; i < gc->idx; i++) {
-    free(gc->ghosts[i].x);
-    free(gc->ghosts[i].y);
-  }
-  free(gc->ghosts);
-  gc->ghosts = NULL;
-  
-  free(gc->player_spawned_here);
-  free(gc->hole_spawned_here);
-  gc->player_spawned_here = NULL;
-  gc->hole_spawned_here = NULL;
+	LOG_INFO("World Bounds: (%d, %d)", gc->wc->maps[gc->wc->current_map].size.x, gc->wc->maps[gc->wc->current_map].size.y);
 
-  free(gc);
-  gc = NULL;
+	// Pre shuffle tiles for future randomized spawn locations
+	//
+	// Push all walkable tiles to an array
+	// Randomize their locations
+
+	if (gc->spawn_tiles.data)
+		SDL_free(gc->spawn_tiles.data);
+	gc->spawn_tiles.data = NULL;
+
+	gc->spawn_tiles.count = 0;
+	gc->spawn_tiles.capacity = 0;
+	gc->spawn_tiles.last_occupied = 0;
+
+	u32 start_time = (u32)SDL_GetTicksNS();
+	const Map* map = &gc->wc->maps[gc->wc->current_map];
+
+	for (u16 y = 0; y < gc->wc->maps[gc->wc->current_map].size.y; y++)
+	{
+		for (u16 x = 0; x < gc->wc->maps[gc->wc->current_map].size.x; x++)
+		{
+			u8 tile_type = TILE(map, y, x);
+			if (tile_type != 0) // Only add walkable tiles
+				continue;
+
+			SpawnableTile tile = {
+				.tile = { .x = x, .y = y },
+				.occupied = false
+			};
+			DA_APPEND(gc->spawn_tiles, tile);
+		}
+	}
+
+	_shuffle_tiles(gc);
+	u32 end_time = (u32)SDL_GetTicksNS();
+	LOG_DEBUG("Map Generated after %d ns", end_time - start_time);
+
+	return true;
 }
 
+static inline bool _level_cleared(GameContext* gc)
+{
+	switch (gc->score)
+	{
+		default:	
+			return true;
+
+		// Forcing change through const
+		case 0:
+			if (gc->wc->current_map == MAP_TUTORIAL1)	return true;
+			((WorldContext*)gc->wc)->current_map = MAP_TUTORIAL1;	break;
+
+		case 3:
+			if (gc->wc->current_map == MAP_TUTORIAL2)	return true;
+			((WorldContext*)gc->wc)->current_map = MAP_TUTORIAL2;	break;
+
+		case 7:
+			if (gc->wc->current_map == MAP_TUTORIAL3)	return true;
+			((WorldContext*)gc->wc)->current_map = MAP_TUTORIAL3;	break;
+	}
+
+	gc->ghost.count = 0;
+	_generate_world(gc);
+
+	return true;
+}
+
+bool game_main(GameContext* gc)
+{
+	if (gc->game_over)
+		return true;
+	
+	if (!_player_move(gc))
+		return true;
+
+	_ghost_move(gc);
+
+	if (_is_player_on_hole(gc))
+		if (!_score(gc))
+			return false;
+
+	if (_ghost_collision(gc))
+	{
+		gc->player.health++;
+		if (gc->player.health == 3)
+			gc->game_over = true;
+	}
+
+	if (!gc->ghosts_spawned)
+		if (!_spawn_ghost(gc))
+			return false;
+
+	if (!_level_cleared(gc))
+		return false;
+
+	if (!gc->player_spawned)
+		if (!_spawn_player(gc))
+			ERROR_RETURN("Couldn't find valid player spawn locatation");
+
+	if (!gc->hole_spawned)
+		if (!_spawn_hole(gc))
+			ERROR_RETURN("Couldn't find valid hole spawn locatation");
+
+	return true;
+}
+
+bool game_init(GameContext* gc)
+{
+	_generate_world(gc);
+
+	gc->ghosts_spawned = true;
+
+	if (!_spawn_player(gc))
+		ERROR_RETURN("Couldn't find valid player spawn locatation");
+
+	if (!_spawn_hole(gc))
+		ERROR_RETURN("Couldn't find valid hole spawn locatation");
+
+	return true;
+}
+
+void game_quit(GameContext* gc)
+{
+	if (gc->player.pos_list.data)
+		SDL_free(gc->player.pos_list.data);
+	gc->player.pos_list.data = NULL;
+
+	if (gc->spawn_tiles.data)
+		SDL_free(gc->spawn_tiles.data);
+	gc->spawn_tiles.data = NULL;
+	
+	for (int i = 0; i < gc->ghost.count; i++)
+	{
+		if (gc->ghost.data[i].pos_list.data)
+			SDL_free(gc->ghost.data[i].pos_list.data);
+		gc->ghost.data[i].pos_list.data = NULL;
+	}
+
+	if (gc->ghost.data)
+		SDL_free(gc->ghost.data);
+	gc->ghost.data = NULL;
+}

@@ -1,111 +1,69 @@
 // types.h
 #pragma once
 
-// Libraries
-#include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
 #include <stdlib.h>
-#include <time.h>
-#include <math.h>
-#include <SDL3/SDL.h>
+#include <stdint.h>
 
-// Enums
-typedef enum {
-  DIR_UP,
-  DIR_DOWN,
-  DIR_LEFT,
-  DIR_RIGHT,
-  DIR_NONE
-} Direction;
+// Unsigned integers
+typedef uint8_t u8;
+typedef struct { u8 x, y; } u8_2;
+typedef struct { u8 x, y, z; } u8_3;
+typedef struct { u8 x, y, w, h; } u8_4;
 
-typedef enum {
-  ARROW,
-  PLAYER,
-  GHOST,
-  HOLE,
-  TILES,
-  TEXTURE_COUNT
-} TextureID;
+typedef uint16_t u16;
+typedef struct { u16 x, y; } u16_2;
+typedef struct { u16 x, y, z; } u16_3;
+typedef struct { u16 x, y, w, h; } u16_4;
 
-typedef enum {
-  TUTORIAL, // 3x3
-  DEFAULT,  // 5x5
-  CIRCLING, // 7x7
-  MAP_COUNT
-} MapID;
+typedef uint32_t u32;
+typedef struct { u32 x, y; } u32_2;
+typedef struct { u32 x, y, z; } u32_3;
+typedef struct { u32 x, y, w, h; } u32_4;
 
-typedef enum {
-  TILE_EMPTY,
-  TILE_WALL,
-} TileType;
+typedef uint64_t u64;
+typedef struct { u64 x, y; } u64_2;
+typedef struct { u64 x, y, z; } u64_3;
+typedef struct { u64 x, y, w, h; } u64_4;
 
-// Common Types
-typedef struct {
-  float render_x;
-  float render_y;
-} RenderPos;
+// Signed integers
+typedef int8_t i8;
+typedef struct { i8 x, y; } i8_2;
+typedef struct { i8 x, y, z; } i8_3;
+typedef struct { i8 x, y, w, h; } i8_4;
 
-typedef struct {
-  uint8_t x, y, w, h;
-  const uint8_t *tiles;
-} Map;
+typedef int16_t i16;
+typedef struct { i16 x, y; } i16_2;
+typedef struct { i16 x, y, z; } i16_3;
+typedef struct { i16 x, y, w, h; } i16_4;
 
-typedef struct {
-  uint8_t *x, *y; // Both are arrays
-  int move_count;
-  bool in_hole;
-} Ghost;
+typedef int32_t i32;
+typedef struct { i32 x, y; } i32_2;
+typedef struct { i32 x, y, z; } i32_3;
+typedef struct { i32 x, y, w, h; } i32_4;
 
-// Context Types
-typedef struct {
-  // Player
-  int x, y;
-  Direction* move_history;
-  int move_tick;
-  bool spawned;
-  uint8_t hp;
-  Ghost* ghosts;
-  int idx;
+typedef int64_t i64;
+typedef struct { i64 x, y; } i64_2;
+typedef struct { i64 x, y, z; } i64_3;
+typedef struct { i64 x, y, w, h; } i64_4;
 
-  // Tiles
-  int tile_size;
-  int w, h;
-  int hole_x, hole_y;
-  const Map* map;
-  MapID current_map;
-  bool* player_spawned_here;
-  bool* hole_spawned_here;
+// Floating point
+typedef float f32;
+typedef struct { f32 x, y; } f32_2;
+typedef struct { f32 x, y, z; } f32_3;
+typedef struct { f32 x, y, w, h; } f32_4;
 
-  // States
-  bool game_over;
-} GameContext;
+typedef double f64;
+typedef struct { f64 x, y; } f64_2;
+typedef struct { f64 x, y, z; } f64_3;
+typedef struct { f64 x, y, w, h; } f64_4;
 
-typedef struct {
-  SDL_Renderer* renderer;
+// Colors
+#define RED       ((SDL_Color){255, 0, 0, 255})
+#define GREEN     ((SDL_Color){0, 255, 0, 255})
+#define BLUE      ((SDL_Color){0, 0, 255, 255})
 
-  const GameContext* gc;
-
-  // Textures
-  SDL_Texture* textures[TEXTURE_COUNT];
-
-  // Animation
-  int idle_frame;
-  int frame_timer;
-
-  // Interpolation
-  RenderPos player_render;
-  RenderPos* ghost_render;
-} RenderContext;
-
-typedef struct {
-  // Normal stuff
-  SDL_Window* window;
-  SDL_Renderer* renderer;
-
-  // Types
-
-  // Contexts
-  GameContext* gc;
-  RenderContext* rc;
-} AppState;
+#define WHITE     ((SDL_Color){255, 255, 255, 255})
+#define LIGHTGRAY ((SDL_Color){200, 200, 200, 255})
+#define GRAY      ((SDL_Color){128, 128, 128, 255})
+#define DARKGRAY  ((SDL_Color){30, 30, 30, 255})
+#define BLACK     ((SDL_Color){0, 0, 0, 255})

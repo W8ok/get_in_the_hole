@@ -1,327 +1,251 @@
 // render.c
-#include "include/types.h"
-#include "include/defines.h"
-#include "include/inlines.h"
+#include "render.h"
 
-// Helper Fucntions
-void _clear_background(SDL_Renderer* renderer, SDL_Color color)
+SDL_Renderer* r = NULL;
+
+static inline bool _set_color(SDL_Color color)
 {
-  // Draw Background
-  SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-  SDL_RenderClear(renderer);
+	return SDL_SetRenderDrawColor(r, color.r, color.g, color.b, color.a);
 }
 
-void _render_rect(SDL_Renderer* renderer, SDL_FRect rect, SDL_Color color)
+static inline bool _render_texture(SDL_Texture* texture, const f32_4* src, const f32_4* dst)
 {
-  SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-  SDL_RenderRect(renderer, &rect);
+	return SDL_RenderTexture(r, texture, (const SDL_FRect*)src, (const SDL_FRect*)dst);
 }
 
-void _render_fill_rect(SDL_Renderer* renderer, SDL_FRect rect, SDL_Color color)
+static inline void _render_player(RenderContext* rc)
 {
-  SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-  SDL_RenderFillRect(renderer, &rect);
+	// I love pointers
+	const f32 tile_size = rc->gc->wc->tile_size;
+
+	f32 animation_count;
+	SDL_GetTextureSize(rc->tex.player, &animation_count, NULL);
+	animation_count /= tile_size;
+
+	static u32 last_tick = 0;
+	u32 now = SDL_GetTicks();
+
+	if ((now - last_tick) >= 1000.0f)
+	{
+		last_tick = now;
+		rc->animation_state.player++;
+		rc->animation_state.player = fmod(rc->animation_state.player, animation_count);
+	}
+
+
+	f32_4 src = {
+		.x = rc->animation_state.player * tile_size,
+		.y = rc->gc->player.health * tile_size,
+		.w = tile_size,
+		.h = tile_size
+	};
+
+	f32_4 dst = {
+		.x = rc->gc->player.current_pos.x * tile_size + rc->offset.x,
+		.y = rc->gc->player.current_pos.y * tile_size + rc->offset.y,
+		.w = tile_size,
+		.h = tile_size
+	};
+
+	if (!_render_texture(rc->tex.player, &src, &dst))
+		LOG_WARN("Player Rendering ERROR");
 }
 
-void _render_sprite(SDL_Renderer* renderer, SDL_Texture* texture, SDL_FPoint pos, float rotation, float size)
+static inline void _render_hole(RenderContext* rc)
 {
-  float tex_w, tex_h;
-  SDL_GetTextureSize(texture, &tex_w, &tex_h);
+	f32 tile_size = rc->gc->wc->tile_size;
 
-  SDL_FRect sprite = (SDL_FRect) {
-    pos.x,
-    pos.y,
-    tex_w * size,
-    tex_h * size
-  };
-  
-  SDL_RenderTextureRotated(renderer, texture, NULL, &sprite, rotation, NULL, SDL_FLIP_NONE);
+	f32_4 src = {
+		.x = 0,
+		.y = 0,
+		.w = tile_size,
+		.h = tile_size
+	};
+
+	f32_4 dst = {
+		.x = rc->gc->hole_pos.x * tile_size + rc->offset.x,
+		.y = rc->gc->hole_pos.y * tile_size + rc->offset.y,
+		.w = tile_size,
+		.h = tile_size
+	};
+
+	if (!_render_texture(rc->tex.hole, &src, &dst))
+		LOG_WARN("Hole Rendering ERROR");
 }
 
-static float _approach(float current, float target, float delta_time)
+static inline void _render_ghosts(RenderContext* rc)
 {
-  const float speed = 0.005f; // tiles per ms
-  float delta = target - current;
-  float step = speed * delta_time;
+	if (rc->gc->game_over)
+		return;
 
-  if (fabsf(delta) <= step)
-    return target; // reached target
-  return current + (delta > 0 ? step : -step);
+	if (!rc->gc->ghosts_spawned)
+		return;
+
+	f32 tile_size = rc->gc->wc->tile_size;
+
+	f32_4 src = {
+		.x = 0,
+		.y = 0,
+		.w = tile_size,
+		.h = tile_size
+	};
+
+	for (u16 i = 0; i < rc->gc->ghost.count; i++)
+	{
+		if (!rc->gc->ghost.data[i].active)
+			continue;
+
+		f32_4 dst = {
+			.x = rc->gc->ghost.data[i].current_pos.x * tile_size + rc->offset.x,
+			.y = rc->gc->ghost.data[i].current_pos.y * tile_size + rc->offset.y,
+			.w = tile_size,
+			.h = tile_size
+		};
+
+		if (!_render_texture(rc->tex.ghost, &src, &dst))
+			LOG_WARN("Ghost%d Rendering ERROR", i);
+	}
 }
 
-static SDL_FPoint _get_map_offset(const GameContext* gc)
+static inline void _render_map(RenderContext* rc)
 {
-    float screen_w = 800;
-    float screen_h = 600;
+	const WorldContext* wc = rc->gc->wc;
+	f32 tile_size = wc->tile_size;
 
-    float map_pixel_w = gc->w * gc->tile_size;
-    float map_pixel_h = gc->h * gc->tile_size;
+	for (u8 y = 0; y < wc->maps[wc->current_map].size.y; y++)
+	{
+		for (u8 x = 0; x < wc->maps[wc->current_map].size.x; x++)
+		{
+			u8 tile_type = TILE(&wc->maps[wc->current_map], y, x);
+			if (!tile_type)
+				continue;
 
-    SDL_FPoint offset = {
-        .x = (screen_w - map_pixel_w) / 2,
-        .y = (screen_h - map_pixel_h) / 2
-    };
+			f32_4 src = {
+				.x = (tile_type-1) * tile_size,
+				.y = 0,
+				.w = tile_size,
+				.h = tile_size
+			};
 
-    return offset;
+			f32_4 dst = {
+				.x = tile_size * x + rc->offset.x,
+				.y = tile_size * y + rc->offset.y,
+				.w = tile_size,
+				.h = tile_size
+			};
+
+			if (!_render_texture(rc->tex.tiles, &src, &dst))
+				LOG_WARN("Tile (%d, %d) Rendering ERROR", x, y);
+		}
+	}
 }
 
-// Primary Functions
-void render_player(RenderContext* rc, float delta_time)
+static inline bool _clear_background(SDL_Color color)
 {
-  float tile_size = rc->gc->tile_size;
-
-  SDL_FPoint offset = _get_map_offset(rc->gc);
-
-  // Use interpolated render positions
-  rc->player_render.render_x = _approach(rc->player_render.render_x, rc->gc->x, delta_time);
-  rc->player_render.render_y = _approach(rc->player_render.render_y, rc->gc->y, delta_time);
-
-  // Update animation timer
-  rc->frame_timer += delta_time;
-
-  if (!rc->gc->game_over)
-  {
-    if (rc->frame_timer >= 1000)
-    {
-      rc->idle_frame = (rc->idle_frame + 1) % 4; // 4 frames in a row
-      rc->frame_timer = 0;
-    }
-  }
-  else
-  {
-    if (rc->idle_frame < 3 && rc->frame_timer >= 1000)
-    {
-      rc->idle_frame++;
-      rc->frame_timer = 0;
-    }
-
-  }
-
-  SDL_FRect src = {
-    .x = rc->idle_frame * 32.0f,
-    .y = rc->gc->hp * 32.0f,
-    .w = 32.0f,
-    .h = 32.0f
-  };
-
-  SDL_FRect player = {
-    .x = rc->player_render.render_x * tile_size + offset.x,
-    .y = rc->player_render.render_y * tile_size + offset.y,
-    .w = tile_size,
-    .h = tile_size
-  };
-
-  SDL_RenderTexture(rc->renderer, rc->textures[PLAYER], &src, &player);
+	if (!_set_color(color))
+		return false;
+	return SDL_RenderClear(r);
 }
 
-void render_ghosts(RenderContext* rc, float delta_time)
+static inline void _get_offset(RenderContext* rc)
 {
-  if (rc->gc->game_over)
-    return;
+	const WorldContext* wc = rc->gc->wc;
+	f32_2 map_size = (f32_2){
+		.x = wc->maps[wc->current_map].size.x * wc->tile_size,
+		.y = wc->maps[wc->current_map].size.y * wc->tile_size
+	};
 
-  float tile_size = rc->gc->tile_size;
-  SDL_FPoint offset = _get_map_offset(rc->gc);
-
-  for (int i = 0; i < rc->gc->idx; i++)
-  {
-    Ghost* g = &rc->gc->ghosts[i];
-    RenderPos* rpos = &rc->ghost_render[i];
-
-    int tick = rc->gc->move_tick;
-    if (tick > g->move_count)
-      tick = g->move_count;
-
-    float target_x = g->x[tick];
-    float target_y = g->y[tick];
-
-    // Interpolate render position
-    rpos->render_x = _approach(rpos->render_x, target_x, delta_time);
-    rpos->render_y = _approach(rpos->render_y, target_y, delta_time);
-
-    Direction dir = DIR_UP;
-    if (tick <= g->move_count)
-    {
-      int dx = g->x[tick + 1] - g->x[tick];
-      int dy = g->y[tick + 1] - g->y[tick];
-
-      if (dx == 1)
-        dir = DIR_RIGHT;
-      else if (dx == -1)
-        dir = DIR_LEFT;
-      else if (dy == 1)
-        dir = DIR_DOWN;
-      else if (dy == -1)
-        dir = DIR_UP;
-      else
-        dir = DIR_NONE;
-    }
-
-    SDL_FRect src = (SDL_FRect) {
-      dir * 32.0f,
-      0.0f,
-      32.0f,
-      32.0f
-    };
-
-    SDL_FRect ghost_rect = (SDL_FRect) {
-      rpos->render_x * tile_size + offset.x,
-      rpos->render_y * tile_size + offset.y,
-      tile_size,
-      tile_size
-    };
-
-    SDL_RenderTexture(rc->renderer, rc->textures[GHOST], &src, &ghost_rect);
-  }
+	rc->offset = (f32_2){
+		.x = (input.window_size.x - map_size.x) / 2,
+		.y = (input.window_size.y - map_size.y) / 2,
+	};
 }
 
-void render_hole(RenderContext* rc)
+void render_debug_lines()
 {
-  float tile_size = rc->gc->tile_size;
-  SDL_FPoint offset = _get_map_offset(rc->gc);
-
-  SDL_FRect hole = (SDL_FRect) {
-    rc->gc->hole_x * tile_size + offset.x,
-    rc->gc->hole_y * tile_size + offset.y,
-    tile_size,
-    tile_size
-  };
-
-  SDL_RenderTexture(rc->renderer, rc->textures[HOLE], NULL, &hole);
+	_set_color(RED);
+	SDL_RenderLine(r, 0, 0, input.window_size.x, input.window_size.y);
+	SDL_RenderLine(r, input.window_size.x, 0, 0, input.window_size.y);
+	
+	_set_color(BLUE);
+	SDL_RenderLine(r, input.window_size.x/2, 0, input.window_size.x/2, input.window_size.y);
+	SDL_RenderLine(r, 0, input.window_size.y/2, input.window_size.x, input.window_size.y/2);
 }
 
-void render_grid(const RenderContext* rc)
+void render_main(RenderContext* rc)
 {
-  SDL_Color grid_color = (SDL_Color) {50, 50, 50, 255};
-  SDL_SetRenderDrawColor(rc->renderer, grid_color.r, grid_color.g, grid_color.b, grid_color.a);
+	if (!_clear_background(DARKGRAY))
+		LOG_WARN("Clear Background ERROR");
 
-  int w = rc->gc->w;
-  int h = rc->gc->h;
-  int tile_size = rc->gc->tile_size;
+	render_debug_lines();
 
-  // Prepare line points
-  int pw = w * tile_size;
-  int ph = h * tile_size;
+	_get_offset(rc);
 
-  for (int x = 0; x <= w; x++) {
-    float px = x * tile_size;
-    SDL_RenderLine(rc->renderer, px, 0, px, ph);
-  }
+	_render_player(rc);
+	_render_hole(rc);
+	_render_ghosts(rc);
+	_render_map(rc);
 
-  for (int y = 0; y <= h; y++) {
-    float py = y * tile_size;
-    SDL_RenderLine(rc->renderer, 0, py, pw, py);
-  }
+	SDL_RenderPresent(r);
 }
 
-void render_map(RenderContext* rc)
+static inline SDL_Texture* _load_texture(const char* texture_path)
 {
-  const Map* map = rc->gc->map;
-  float tile = rc->gc->tile_size;
-  SDL_FPoint offset = _get_map_offset(rc->gc);
-
-  for (int y = 0; y < map->h; y++)
-  {
-    for (int x = 0; x < map->w; x++)
-    {
-      uint8_t t = map_tile_at(map, x, y);
-
-      if (t == TILE_WALL)
-      {
-        SDL_FRect wall = {
-          x * tile + offset.x,
-          y * tile + offset.y,
-          tile,
-          tile
-        };
-
-        SDL_RenderTexture(rc->renderer, rc->textures[TILES], NULL, &wall);
-      }
-    }
-  }
+	char full_path[256];
+	snprintf(full_path, sizeof(full_path), "./assets/%s", texture_path);
+	SDL_Texture* texture = IMG_LoadTexture(r, full_path);
+	SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+	return texture;
 }
 
-float get_delta_time()
+bool render_init(RenderContext* rc, SDL_Renderer* renderer)
 {
-  static uint32_t last_time = 0;
-  uint32_t current_time = SDL_GetTicks();
-  float delta_time = (float)(current_time - last_time);
-  last_time = current_time;
-  return delta_time;
+	r = renderer;
+
+	if (!SDL_SetRenderVSync(r, -1))			// Adaptive
+		if (!SDL_SetRenderVSync(r, 1))		// Regular
+			if (!SDL_SetRenderVSync(r, 0))	// No Vsync
+				ERROR_RETURN("VSync Initialization Failed");
+
+	// TODO
+	// Add a loading bar
+
+	i32 current_texture = 0;
+	i32 total_textures = sizeof(rc->tex) / sizeof(SDL_Texture*);
+
+	// I want no questions...
+	// Yes I know an inline function would be better
+	// No I don't care
+#define LOAD_TEXTURE(member, name) \
+	do { \
+		current_texture++; \
+		i32 percent = (current_texture * 100) / total_textures; \
+		rc->tex.member = _load_texture(name); \
+		if (!rc->tex.member) \
+			ERROR_RETURN("Failed to load texture: %s (%d%%)", name, percent); \
+		else \
+			LOG_INFO("Loaded texture: %s (%d%%)", name, percent); \
+	} while (0)
+
+	LOAD_TEXTURE(player,	"player.png");
+	LOAD_TEXTURE(ghost,		"ghost.png");
+	LOAD_TEXTURE(tiles,		"tiles.png");
+	LOAD_TEXTURE(hole,		"hole.png");
+
+#undef LOAD_TEXTURE
+
+	SDL_SetTextureAlphaMod(rc->tex.ghost, 196);
+
+	if (!SDL_RenderPresent(r))
+		ERROR_RETURN("Initial Render Failure");
+
+	return true;
 }
 
-// Main Function
-void main_render(RenderContext* rc)
+void render_quit(RenderContext* rc)
 {
-  float delta_time = get_delta_time();
-  _clear_background(rc->renderer, DARKGRAY);
-
-  //render_grid(rc);
-  render_map(rc);
-  render_hole(rc);
-  render_player(rc, delta_time);
-  render_ghosts(rc, delta_time);
-
-  // Render what is drawn
-  SDL_RenderPresent(rc->renderer);
+	SDL_DestroyTexture(rc->tex.player);
+	SDL_DestroyTexture(rc->tex.ghost);
+	SDL_DestroyTexture(rc->tex.tiles);
+	SDL_DestroyTexture(rc->tex.hole);
 }
-
-// Initialization
-bool render_init(AppState* app)
-{
-  app->rc = SDL_malloc(sizeof(RenderContext));
-  if (!app->rc || !app->renderer)
-      return false;
-  
-  app->rc->renderer = app->renderer;
-  app->rc->gc = app->gc;
-
-  // Initialize interpolated render positions
-  app->rc->player_render.render_x = app->gc->x;
-  app->rc->player_render.render_y = app->gc->y;
-
-  app->rc->ghost_render = SDL_calloc(MAX_GHOSTS, sizeof(RenderPos));
-
-  // Texture loading
-  const char* texture_paths[TEXTURE_COUNT] = {
-    "assets/arrow.bmp",
-    "assets/player.bmp",
-    "assets/ghost.bmp",
-    "assets/hole.bmp",
-    "assets/tiles.bmp",
-  };
-
-  for (int i = 0; i < TEXTURE_COUNT; i++)
-  {
-    SDL_Surface* surf = SDL_LoadBMP(texture_paths[i]);
-    if (!surf)
-      return Panic("Failed to load texture");
-
-    app->rc->textures[i] = SDL_CreateTextureFromSurface(app->rc->renderer, surf);
-    SDL_DestroySurface(surf);
-    SDL_SetTextureScaleMode(app->rc->textures[i], SDL_SCALEMODE_NEAREST);
-  }
-
-  return true;
-}
-
-// Cleanup Function
-void render_cleanup(RenderContext* rc)
-{
-  if (!rc) return;
-
-  // Texture Cleanup
-  for (int i = 0; i < TEXTURE_COUNT; i++)
-    if (rc->textures[i])
-      SDL_DestroyTexture(rc->textures[i]);
-
-  // Free ghost_render safely
-  if (rc->ghost_render)
-  {
-    SDL_free(rc->ghost_render);
-    rc->ghost_render = NULL;
-  }
-
-  // Free the RenderContext itself
-  SDL_free(rc);
-}
-
